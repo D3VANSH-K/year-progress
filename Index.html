@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Year Progress</title>
+    <meta name="description" content="A minimalist visualization of time passed vs. time remaining.">
+    <meta name="theme-color" content="#000000">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="data:application/json;base64,ewogICJuYW1lIjogIlllYXIgUHJvZ3Jlc3MiLAogICJzaG9ydF9uYW1lIjogIlByb2dyZXNzIiwKICAic3RhcnRfdXJsIjogIi4iLAogICJkaXNwbGF5IjogInN0YW5kYWxvbmUiLAogICJiYWNrZ3JvdW5kX2NvbG9yIjogIiMwMDAwMDAiLAogICJ0aGVtZV9jb2xvciIjogIiMwMDAwMDAiLAogICJpY29ucyI6IFtdCn0=">
+
+    <style>
+        /* --- CSS VARIABLES & RESET --- */
+        :root {
+            --bg-color: #000000;
+            --text-color: #e0e0e0;
+            --text-muted: #666666;
+            --dot-future: #222222;
+            --dot-past: #00ff41;
+            --dot-present: #00f3ff;
+            --glow-past: 0 0 5px rgba(0, 255, 65, 0.5);
+            --glow-present: 0 0 15px rgba(0, 243, 255, 0.9);
+            --font-stack: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            
+            /* Base Spacing Defaults */
+            --grid-gap: 8px; 
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: var(--font-stack);
+            height: 100vh; /* Strict viewport height */
+            width: 100vw;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden; /* No scrolling globally */
+            transition: filter 1s ease;
+        }
+
+        /* --- LAYOUT --- */
+        header {
+            padding: 24px 32px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: linear-gradient(to bottom, #000000 0%, rgba(0,0,0,0) 100%);
+            z-index: 10;
+            flex-shrink: 0; 
+        }
+
+        .live-clock {
+            font-size: 1.1rem;
+            font-weight: 300;
+            letter-spacing: 0.5px;
+            font-variant-numeric: tabular-nums;
+            color: var(--text-color);
+        }
+
+        .year-label {
+            font-weight: 700;
+            font-size: 1.2rem;
+            color: var(--text-muted);
+        }
+
+        main {
+            flex-grow: 1; /* Takes up all remaining space */
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            overflow: hidden; 
+            position: relative;
+            width: 100%;
+        }
+
+        /* --- THE GRID --- */
+        .year-grid {
+            display: grid;
+            justify-content: center;
+            align-content: center;
+            width: 100%;
+            /* Default height behavior */
+            height: auto; 
+            gap: var(--grid-gap);
+            transition: transform 1s ease-in-out; 
+            will-change: transform;
+        }
+
+        /* --- DOTS --- */
+        .dot {
+            width: 100%; 
+            height: auto;
+            aspect-ratio: 1 / 1; 
+            border-radius: 50%;
+            background-color: var(--dot-future);
+            transition: background-color 1.5s ease, box-shadow 1.5s ease, opacity 0.5s ease;
+            position: relative;
+            cursor: pointer;
+        }
+
+        /* --- DEVICE SPECIFIC LAYOUTS --- */
+
+        /* DESKTOP / TABLET (Min Width 768px) */
+        @media (min-width: 768px) {
+            .year-grid {
+                /* 31 Columns as requested */
+                grid-template-columns: repeat(31, 1fr); 
+                /* Increased Gap for spaciousness */
+                gap: 16px; 
+                /* Increased width to allow spacing */
+                max-width: 950px; 
+                /* Prevent it from getting too tall */
+                max-height: 85vh;
+            }
+        }
+
+        /* MOBILE (Max Width 767px) */
+        @media (max-width: 767px) {
+            :root {
+                --grid-gap: 5px; 
+            }
+            
+            header { padding: 15px 20px; }
+            footer { padding: 15px 20px 30px 20px; }
+
+            main { padding: 10px; }
+
+            .year-grid {
+                /* 14 cols fits vertical screens perfectly without scrolling */
+                grid-template-columns: repeat(14, 1fr);
+                /* Ensure it fills height to trigger shrinking of dots if needed */
+                height: 100%; 
+                align-content: center;
+            }
+        }
+
+        /* --- STATES --- */
+
+        .dot.past {
+            background-color: var(--dot-past);
+            box-shadow: var(--glow-past);
+        }
+
+        .dot.present {
+            background-color: var(--dot-present);
+            box-shadow: var(--glow-present);
+            animation: pulse 4s infinite ease-in-out;
+            z-index: 2;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; box-shadow: 0 0 10px rgba(0, 243, 255, 0.6); }
+            50% { transform: scale(1.3); opacity: 0.9; box-shadow: 0 0 22px rgba(0, 243, 255, 0.85); }
+            100% { transform: scale(1); opacity: 1; box-shadow: 0 0 10px rgba(0, 243, 255, 0.6); }
+        }
+
+        /* --- OLED IDLE MODE --- */
+        body.idle-active .year-grid {
+            animation: pixel-shift 60s infinite linear;
+        }
+
+        @keyframes pixel-shift {
+            0% { transform: translate(0px, 0px); }
+            25% { transform: translate(1px, 1px); }
+            50% { transform: translate(0px, 2px); }
+            75% { transform: translate(-1px, 1px); }
+            100% { transform: translate(0px, 0px); }
+        }
+
+        /* --- TOOLTIP --- */
+        .tooltip {
+            position: fixed;
+            background: rgba(15, 15, 15, 0.95);
+            backdrop-filter: blur(8px);
+            border: 1px solid #333;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            pointer-events: none;
+            opacity: 0;
+            transform: translateY(10px) scale(0.95);
+            transition: opacity 0.2s, transform 0.2s;
+            z-index: 1000;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.9);
+            color: #fff;
+            text-align: center;
+        }
+        .tooltip.visible {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+        }
+
+        /* --- FOOTER --- */
+        footer {
+            text-align: center;
+            background: linear-gradient(to top, #000000 0%, rgba(0,0,0,0) 100%);
+            z-index: 10;
+            flex-shrink: 0;
+            padding: 30px; /* Restored generous padding for desktop */
+        }
+
+        .quote-container {
+            min-height: 24px;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0.8;
+            padding: 0 10px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 24px;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .stat-btn, .focus-toggle {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-family: inherit;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: color 0.3s;
+            outline: none;
+            user-select: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .stat-btn:hover, .focus-toggle:hover { color: var(--text-color); }
+
+        .toggle-switch {
+            width: 32px;
+            height: 18px;
+            background: #222;
+            border-radius: 9px;
+            position: relative;
+            transition: background 0.3s ease;
+        }
+        .toggle-switch::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 14px;
+            height: 14px;
+            background: #666;
+            border-radius: 50%;
+            transition: transform 0.3s cubic-bezier(0.4, 0.0, 0.2, 1), background 0.3s;
+        }
+
+        .focus-active .toggle-switch { background: rgba(0, 243, 255, 0.2); }
+        .focus-active .toggle-switch::after {
+            transform: translateX(14px);
+            background: var(--dot-present);
+        }
+
+        body.focus-mode .dot.past {
+            background-color: #080808; 
+            box-shadow: none;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="year-label" id="currentYearDisplay"></div>
+        <div class="live-clock" id="clock">00:00:00</div>
+    </header>
+
+    <main>
+        <div id="grid" class="year-grid"></div>
+        <div id="tooltip" class="tooltip"></div>
+    </main>
+
+    <footer>
+        <div class="quote-container">
+            <span id="quote"></span>
+        </div>
+
+        <div class="controls">
+            <button id="progressCounter" class="stat-btn">Loading...</button>
+            <div class="focus-toggle" id="focusToggleBtn">
+                <span>Focus</span>
+                <div class="toggle-switch"></div>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        /**
+         * APP STATE & CONSTANTS
+         */
+        const quotes = [
+            "We suffer more often in imagination than in reality.",
+            "Make the best use of what is in your power.",
+            "Waste no more time arguing what a good man should be. Be one.",
+            "You have power over your mind - not outside events.",
+            "The best revenge is not to be like your enemy.",
+            "Time is a resource. Stop spending it on things that don't matter.",
+            "Focus on the blue dot. That is where you live.",
+            "The past is dead. The future is uncertain. Own the present."
+        ];
+
+        const state = {
+            today: new Date(),
+            year: new Date().getFullYear(),
+            totalDays: 365,
+            dayOfYear: 0,
+            isFocusMode: localStorage.getItem('yearProgress_focus') === 'true',
+            showPercentage: localStorage.getItem('yearProgress_showPct') === 'true',
+            idleTime: 0
+        };
+
+        // DOM Elements
+        const gridEl = document.getElementById('grid');
+        const clockEl = document.getElementById('clock');
+        const yearDisplayEl = document.getElementById('currentYearDisplay');
+        const quoteEl = document.getElementById('quote');
+        const tooltipEl = document.getElementById('tooltip');
+        const progressBtn = document.getElementById('progressCounter');
+        const focusBtn = document.getElementById('focusToggleBtn');
+
+        // --- CORE LOGIC ---
+
+        function isLeapYear(year) {
+            return (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
+        }
+
+        function getDayOfYear(date) {
+            const start = new Date(date.getFullYear(), 0, 0);
+            const diff = date - start + ((start.getTimezoneOffset() - date.getTimezoneOffset()) * 60 * 1000);
+            const oneDay = 1000 * 60 * 60 * 24;
+            return Math.floor(diff / oneDay);
+        }
+
+        function formatDate(dayIndex, year) {
+            const date = new Date(year, 0, dayIndex);
+            return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', weekday: 'short' });
+        }
+
+        // --- INITIALIZATION ---
+
+        function init() {
+            state.totalDays = isLeapYear(state.year) ? 366 : 365;
+            state.dayOfYear = getDayOfYear(state.today);
+            
+            // Initial Render
+            yearDisplayEl.textContent = state.year;
+            renderQuote();
+            tick();
+            updateProgressText();
+            applyFocusMode();
+            renderGrid();
+
+            // Event Listeners
+            setInterval(tick, 1000); 
+            setInterval(checkIdleStatus, 60000);
+            
+            ['mousemove', 'mousedown', 'keypress', 'touchstart', 'scroll'].forEach(evt => {
+                document.addEventListener(evt, resetIdleTimer, {passive: true});
+            });
+
+            progressBtn.addEventListener('click', toggleProgressDisplay);
+            focusBtn.addEventListener('click', toggleFocusMode);
+        }
+
+        // --- RENDERING ---
+
+        function renderGrid() {
+            gridEl.innerHTML = '';
+            
+            for (let i = 1; i <= state.totalDays; i++) {
+                const dot = document.createElement('div');
+                dot.classList.add('dot');
+                dot.id = `day-${i}`;
+                
+                // Assign State Classes
+                if (i < state.dayOfYear) {
+                    dot.classList.add('past');
+                } else if (i === state.dayOfYear) {
+                    dot.classList.add('present');
+                    // No scrollIntoView on load for layout stability
+                } else {
+                    dot.classList.add('future');
+                }
+
+                // Interaction
+                dot.addEventListener('mouseenter', (e) => showTooltip(e, i));
+                dot.addEventListener('mouseleave', hideTooltip);
+                dot.addEventListener('touchstart', (e) => showTooltip(e, i), {passive: true});
+
+                gridEl.appendChild(dot);
+            }
+        }
+
+        // --- CLOCK & TRANSITION LOGIC ---
+
+        function tick() {
+            const now = new Date();
+            clockEl.textContent = now.toLocaleTimeString(undefined, { hour12: false });
+            
+            // Midnight Check
+            if (now.getDate() !== state.today.getDate()) {
+                handleMidnightTransition(now);
+            }
+        }
+
+        function handleMidnightTransition(newDate) {
+            const oldDayIndex = state.dayOfYear;
+            state.today = newDate;
+            state.dayOfYear = getDayOfYear(newDate);
+            
+            if (state.today.getFullYear() !== state.year) {
+                location.reload(); 
+                return;
+            }
+
+            const oldDot = document.getElementById(`day-${oldDayIndex}`);
+            const newDot = document.getElementById(`day-${state.dayOfYear}`);
+
+            if (oldDot && newDot) {
+                oldDot.classList.remove('present');
+                oldDot.classList.add('past');
+                newDot.classList.remove('future');
+                newDot.classList.add('present');
+                updateProgressText();
+            }
+        }
+
+        // --- IDLE MODE (PIXEL SHIFT) ---
+
+        function resetIdleTimer() {
+            state.idleTime = 0;
+            if (document.body.classList.contains('idle-active')) {
+                document.body.classList.remove('idle-active');
+            }
+        }
+
+        function checkIdleStatus() {
+            state.idleTime++;
+            if (state.idleTime >= 2) {
+                document.body.classList.add('idle-active');
+            }
+        }
+
+        // --- UI HELPERS ---
+
+        function renderQuote() {
+            const randomIndex = Math.floor(Math.random() * quotes.length);
+            quoteEl.textContent = `"${quotes[randomIndex]}"`;
+        }
+
+        function updateProgressText() {
+            if (state.showPercentage) {
+                const pct = ((state.dayOfYear / state.totalDays) * 100).toFixed(1);
+                progressBtn.textContent = `${pct}% Complete`;
+            } else {
+                const daysLeft = state.totalDays - state.dayOfYear;
+                progressBtn.textContent = `${daysLeft} Days Left`;
+            }
+        }
+
+        function toggleProgressDisplay() {
+            state.showPercentage = !state.showPercentage;
+            localStorage.setItem('yearProgress_showPct', state.showPercentage);
+            updateProgressText();
+        }
+
+        function toggleFocusMode() {
+            state.isFocusMode = !state.isFocusMode;
+            localStorage.setItem('yearProgress_focus', state.isFocusMode);
+            applyFocusMode();
+        }
+
+        function applyFocusMode() {
+            if (state.isFocusMode) {
+                document.body.classList.add('focus-mode');
+                focusBtn.classList.add('focus-active');
+            } else {
+                document.body.classList.remove('focus-mode');
+                focusBtn.classList.remove('focus-active');
+            }
+        }
+
+        // --- TOOLTIP ---
+        function showTooltip(e, dayIndex) {
+            const dateStr = formatDate(dayIndex, state.year);
+            const status = dayIndex < state.dayOfYear ? "Past" : (dayIndex === state.dayOfYear ? "Today" : "Future");
+            
+            tooltipEl.innerHTML = `<strong>${dateStr}</strong><br><span style="color:#888; font-size:0.8em">${status}</span>`;
+            tooltipEl.classList.add('visible');
+            positionTooltip(e);
+        }
+
+        function hideTooltip() {
+            tooltipEl.classList.remove('visible');
+        }
+
+        function positionTooltip(e) {
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            
+            // Adjust calculations for tooltip to keep it on screen
+            let top = clientY - 50;
+            let left = clientX - (tooltipEl.offsetWidth / 2);
+
+            if (left < 10) left = 10;
+            if (left + tooltipEl.offsetWidth > window.innerWidth - 10) left = window.innerWidth - tooltipEl.offsetWidth - 10;
+            if (top < 10) top = clientY + 20;
+
+            tooltipEl.style.top = `${top}px`;
+            tooltipEl.style.left = `${left}px`;
+        }
+
+        document.body.addEventListener('touchstart', (e) => {
+            if (!e.target.classList.contains('dot')) hideTooltip();
+        }, {passive: true});
+
+        init();
+
+    </script>
+</body>
+</html>
